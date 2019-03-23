@@ -12,6 +12,7 @@ import time
 import copy
 import math
 import sys
+import pickle
 from datetime import datetime
 import calendar
 import os
@@ -25,7 +26,7 @@ try:
     from moviepy.editor import VideoFileClip
 except ImportError:
     print("Fail to import moviepy. Need only for Video upload.")
-    
+
 
 # The urllib library was split into other modules from Python 2 to Python 3
 if sys.version_info.major == 3:
@@ -87,7 +88,10 @@ class InstagramAPI:
             proxies = {'http': proxy, 'https': proxy}
             self.s.proxies.update(proxies)
 
-    def login(self, force=False):
+    def login(self, force=False, session_file_name=None):
+        if session_file_name and self.restore_session(session_file_name):
+            return True
+
         if (not self.isLoggedIn or force):
             if (self.SendRequest('si/fetch_headers/?challenge_type=signup&guid=' + self.generateUUID(False), None, True)):
 
@@ -105,13 +109,62 @@ class InstagramAPI:
                     self.rank_token = "%s_%s" % (self.username_id, self.uuid)
                     self.token = self.LastResponse.cookies["csrftoken"]
 
+                    if session_file_name:
+                        self.saveSession(session_file_name, data)
+
                     self.syncFeatures()
-                    self.autoCompleteUserList()
+                    # self.autoCompleteUserList()
                     self.timelineFeed()
-                    self.getv2Inbox()
+                    # self.getv2Inbox()
                     self.getRecentActivity()
                     print("Login success!\n")
                     return True
+
+    def saveSession(self, session_file_name, data):
+        data_dict = {}
+        data_dict["LastJson"] = self.LastJson
+        data_dict["LastResponse"] = self.LastResponse.status_code
+        data_dict["isLoggedIn"] = True
+        data_dict["username_id"] = self.username_id
+        data_dict["rank_token"] = self.rank_token
+        data_dict["token"] = self.token
+        data_dict["s"] = self.s
+        data_dict["device_id"] = self.device_id
+        data_dict["uuid"] = self.uuid
+        data_dict["username"] = self.username
+        data_dict["password"] = self.password
+        data_dict["data_payload"] = data
+        with open(session_file_name, 'wb') as f:
+            pickle.dump(data_dict, f)
+
+    def restore_session(self, session_file_name):
+        try:
+            with open(session_file_name, 'rb') as f:
+                cache_data = pickle.load(f)
+                self.s = cache_data["s"]
+                self.device_id = cache_data["device_id"]
+                self.uuid = cache_data["uuid"]
+                self.username = cache_data["username"]
+                self.password = cache_data["password"]
+
+                self.LastJson = cache_data["LastJson"]
+                self.LastResponse = cache_data["LastResponse"]
+                self.isLoggedIn = cache_data["isLoggedIn"]
+                self.username_id = cache_data["username_id"]
+                self.rank_token = cache_data["rank_token"]
+                self.token = cache_data["token"]
+
+                self.syncFeatures()
+                # self.autoCompleteUserList()
+                self.timelineFeed()
+                # self.getv2Inbox()
+                self.getRecentActivity()
+
+                # Save login data in cache
+                print("Login success from session!\n")
+                return True
+        except:
+            return False
 
     def syncFeatures(self):
         data = json.dumps({'_uuid': self.uuid,
@@ -379,7 +432,7 @@ class InstagramAPI:
             self.LastJson = json.loads(response.text)
             return True
         else:
-            print("Request return " + str(response.status_code) + " error!")
+            print("Request return " + str(response.status_code) + " error! (endpoint: " + endpoint + ")")
             # for debugging
             try:
                 self.LastResponse = response
@@ -387,7 +440,7 @@ class InstagramAPI:
             except:
                 pass
             return False
-    
+
     def direct_message(self, text, recipients):
         if type(recipients) != type([]):
             recipients = [str(recipients)]
@@ -429,13 +482,13 @@ class InstagramAPI:
         )
         #self.SendRequest(endpoint,post=data) #overwrites 'Content-type' header and boundary is missed
         response = self.s.post(self.API_URL + endpoint, data=data)
-        
+
         if response.status_code == 200:
             self.LastResponse = response
             self.LastJson = json.loads(response.text)
             return True
         else:
-            print ("Request return " + str(response.status_code) + " error!")
+            print ("Request return " + str(response.status_code) + " error! (endpoint: " + endpoint + ")")
             # for debugging
             try:
                 self.LastResponse = response
@@ -443,7 +496,7 @@ class InstagramAPI:
             except:
                 pass
             return False
-        
+
     def direct_share(self, media_id, recipients, text=None):
         if not isinstance(position, list):
             recipients = [str(recipients)]
@@ -492,7 +545,7 @@ class InstagramAPI:
             self.LastJson = json.loads(response.text)
             return True
         else:
-            print("Request return " + str(response.status_code) + " error!")
+            print("Request return " + str(response.status_code) + " error! (endpoint: " + endpoint + ")")
             # for debugging
             try:
                 self.LastResponse = response
@@ -974,7 +1027,7 @@ class InstagramAPI:
             self.LastJson = json.loads(response.text)
             return True
         else:
-            print("Request return " + str(response.status_code) + " error!")
+            print("Request return " + str(response.status_code) + " error! (endpoint: " + endpoint + ")")
             # for debugging
             try:
                 self.LastResponse = response
